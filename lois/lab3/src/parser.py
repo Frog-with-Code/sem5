@@ -1,16 +1,15 @@
-########################################################################################
+#########################################################################################################################################
 # Индивидуальная практическая работа 1 по дисциплине ЛОИС
 # Выполнена студентами группы 421702 БГУИР Шумиловым Артемом Андреевичем, Пушистовой Екатериной Сергеевной, Ященко Александрой Вадимовной
 # Модуль синтаксического анализа базы знаний по БНФ-грамматике
 # Версия 1.0 от 16.10.2024
 #
-# Ссылки на материалы:
 # Практикум по логическим основам интеллектуальных систем / В. В. Голенков и др. — Минск: БГУИР, 2011.
-########################################################################################
+##########################################################################################################################################
 
 import re
 import sys
-from src.models import FuzzyRule, FuzzySet
+from .models import FuzzyRule, FuzzySet
 
 
 class KnowledgeBaseParser:
@@ -23,6 +22,9 @@ class KnowledgeBaseParser:
     def parse_file(filepath: str) -> tuple[list[FuzzySet], list[FuzzyRule]]:
         facts: list[FuzzySet] = []
         rules: list[FuzzyRule] = []
+
+        # Словарь для проверки уникальности имен предикатов: pred_name -> FuzzySet
+        declared_predicates: dict[str, FuzzySet] = {}
 
         try:
             with open(filepath, "r", encoding="utf-8") as f:
@@ -41,7 +43,19 @@ class KnowledgeBaseParser:
                     raise ValueError(
                         f"Строка {line_num}: Нарушение БНФ — факты не могут следовать после правил."
                     )
-                facts.append(KnowledgeBaseParser._parse_fact(line, line_num))
+                fact = KnowledgeBaseParser._parse_fact(line, line_num)
+
+                # Семантическая проверка, встречался ли предикат с таким именем
+                if fact.pred_name in declared_predicates:
+                    prev = declared_predicates[fact.pred_name]
+                    raise ValueError(
+                        f"Семантическая ошибка в строке {line_num}: предикат '{fact.pred_name}' "
+                        f"уже был объявлен ранее как '{prev.full_predicate_name}'. "
+                        f"Повторное определение предиката недопустимо!"
+                    )
+
+                declared_predicates[fact.pred_name] = fact
+                facts.append(fact)
 
         if not facts:
             raise ValueError("База знаний пуста или не содержит фактов.")
@@ -93,8 +107,7 @@ class KnowledgeBaseParser:
                     f"Строка {line_num}: Степень принадлежности '{deg_str}' вне диапазона [0; 1]."
                 )
 
-            deg = float(deg_str)
-            elements[elem] = deg
+            elements[elem] = float(deg_str)
 
         return FuzzySet(pred_name, var_name, elements)
 
