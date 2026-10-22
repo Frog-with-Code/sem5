@@ -18,7 +18,6 @@ class DirectFuzzyInferenceEngine:
         self.known_facts: list[FuzzySet] = list(facts)
         self.rules: list[FuzzyRule] = rules
         self.derived_facts: list[FuzzySet] = []
-        self._derived_counter: int = 1
 
     def compute_all_rule_implications(self):
         """Вычисление отношений нечёткой импликации Гёделя для всех правил."""
@@ -60,7 +59,7 @@ class DirectFuzzyInferenceEngine:
                 print(row_str)
 
     def run_inference(self):
-        """Итеративный процесс прямого логического вывода (Forward Chaining)."""
+        """Итеративный процесс прямого логического вывода."""
 
         print("\n" + "=" * 65)
         print(" ШАГ 3: ПРОЦЕСС ПРЯМОГО НЕЧЁТКОГО ЛОГИЧЕСКОГО ВЫВОДА")
@@ -75,7 +74,7 @@ class DirectFuzzyInferenceEngine:
                 if not rule.relation_matrix:
                     continue
 
-                for fact in list(self.known_facts):
+                for fact in self.known_facts:
                     # Проверяем, подходит ли факт к посылке правила
                     if not self._can_unify(fact, rule):
                         continue
@@ -86,12 +85,16 @@ class DirectFuzzyInferenceEngine:
                         new_facts_in_iteration.append(new_fact)
                         self.known_facts.append(new_fact)
                         self.derived_facts.append(new_fact)
-                        self._derived_counter += 1
 
                         print(f"[+] ВЫВЕДЕН НОВЫЙ ФАКТ!")
                         print(f"    Правило:           {rule}")
-                        print(f"    Использован факт:  {fact} (унифицирован с {rule.ant_pred}({rule.ant_var}))")
+                        print(f"    Использован факт:  {fact}")
                         print(f"    Результат:         {new_fact}\n")
+                    else:
+                        print("Полученный факт уже существует")
+                        print(f"    Правило:           {rule}")
+                        print(f"    Использован факт:  {fact}")
+                        print(f"    Полученный факт:   {new_fact}")
 
             if not new_facts_in_iteration:
                 print(
@@ -101,7 +104,9 @@ class DirectFuzzyInferenceEngine:
 
             # Возможность прерывания процесса вывода пользователем
             cmd = (
-                input("Нажмите Enter для продолжения или введите 'q'/'stop' для завершения: ")
+                input(
+                    "Нажмите Enter для продолжения или введите 'q'/'stop' для завершения: "
+                )
                 .strip()
                 .lower()
             )
@@ -114,14 +119,9 @@ class DirectFuzzyInferenceEngine:
     def _can_unify(self, fact: FuzzySet, rule: FuzzyRule) -> bool:
         """
         Проверка применимости факта к правилу:
-        1. Базовое понятие факта (base_pred) совпадает с предикатом посылки правила.
-        2. Носитель элементов факта строго совпадает со строками матрицы правила
+        1. Носитель элементов факта строго совпадает со строками матрицы правила
            (элементы — это предметные константы, они не унифицируются).
         """
-        fact_base = getattr(fact, "base_pred", fact.pred_name)
-        if fact_base != rule.ant_pred:
-            return False
-
         # Элементы носителя факта обязаны совпадать с элементами строк отношения R(x, y)
         rule_x_elements = {x for (x, _) in rule.relation_matrix.keys()}
         fact_elements = set(fact.elements.keys())
@@ -133,6 +133,7 @@ class DirectFuzzyInferenceEngine:
         Применение обобщенного Модус Поненс (GMP):
         B'(y) = sup_x min(A'(x), R(x, y))
         """
+
         y_elements = sorted(list({y for (_, y) in rule.relation_matrix.keys()}))
         x_elements = fact_a_prime.elements.keys()
 
@@ -150,7 +151,7 @@ class DirectFuzzyInferenceEngine:
             b_prime_dict[y] = round(max_val, 4)
 
         # Формируем имя выведенного факта и связываем его с базовым понятием заключения
-        derived_name = f"{rule.cons_pred}Der{self._derived_counter}"
+        derived_name = f"{rule.cons_pred}Der{len(self.derived_facts) + 1}"
 
         return FuzzySet(
             pred_name=derived_name,
@@ -165,17 +166,18 @@ class DirectFuzzyInferenceEngine:
         Проверяет, известно ли уже такое нечёткое множество для целевого понятия.
         Исключает ложное срабатывание между разными понятиями.
         """
+
         for f in self.known_facts:
             f_base = f.base_pred
             if f_base == rule.cons_pred and f.has_same_fuzzy_set(candidate):
-                    return True
+                return True
         return False
 
     def _find_base_fact_by_pred(self, pred_name: str) -> FuzzySet | None:
         """Поиск исходного факта по имени понятия."""
 
         for f in self.known_facts:
-            f_base = getattr(f, "base_pred", f.pred_name)
+            f_base = f.base_pred
             if not f.is_derived and f_base == pred_name:
                 return f
         return None

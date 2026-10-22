@@ -2,7 +2,7 @@
 # Индивидуальная практическая работа 1 по дисциплине ЛОИС
 # Выполнена студентами группы 421702 БГУИР Шумиловым Артемом Андреевичем, Пушистовой Екатериной Сергеевной, Ященко Александрой Вадимовной
 # Модуль синтаксического анализа базы знаний по БНФ-грамматике
-# Версия 1.0 от 16.10.2024
+# Версия 1.1 от 16.10.2024
 #
 # Практикум по логическим основам интеллектуальных систем / В. В. Голенков и др. — Минск: БГУИР, 2011.
 ##########################################################################################################################################
@@ -13,10 +13,7 @@ from .models import FuzzyRule, FuzzySet
 
 
 class KnowledgeBaseParser:
-    """Синтаксический анализатор базы знаний."""
-
-    IDENT_RE = r"^[a-zA-Z][a-zA-Z0-9]*$"
-    DEGREE_RE = r"^(0(\.\d+)?|1(\.0+)?)$"
+    """Синтаксический анализатор базы знаний со строгим контролем БНФ (без пробелов)."""
 
     @staticmethod
     def parse_file(filepath: str) -> tuple[list[FuzzySet], list[FuzzyRule]]:
@@ -28,13 +25,28 @@ class KnowledgeBaseParser:
 
         try:
             with open(filepath, "r", encoding="utf-8") as f:
-                lines = [line.strip() for line in f.readlines() if line.strip()]
+                content = f.read()
         except Exception as e:
             print(f"[Ошибка открытия файла]: {e}")
             sys.exit(1)
 
+        raw_lines = content.splitlines()
         is_rules_section = False
-        for line_num, line in enumerate(lines, start=1):
+
+        for line_num, raw_line in enumerate(raw_lines, start=1):
+            # Удаляем только символы переноса строки (но не пробелы!)
+            line = raw_line.rstrip("\r\n")
+
+            if not line:
+                continue
+
+            # Проверка: пробелы и табуляции строго запрещены грамматикой БЗ
+            if " " in line or "\t" in line:
+                raise ValueError(
+                    f"Строка {line_num}: Обнаружен запрещённый символ: '{line}'. "
+                    f"По БНФ-грамматике пробелы в базе знаний строго запрещены!"
+                )
+
             if "~>" in line:
                 is_rules_section = True
                 rules.append(KnowledgeBaseParser._parse_rule(line, line_num))
@@ -45,7 +57,7 @@ class KnowledgeBaseParser:
                     )
                 fact = KnowledgeBaseParser._parse_fact(line, line_num)
 
-                # Семантическая проверка, встречался ли предикат с таким именем
+                # Семантическая проверка уникальности предикатов
                 if fact.pred_name in declared_predicates:
                     prev = declared_predicates[fact.pred_name]
                     raise ValueError(
@@ -64,47 +76,41 @@ class KnowledgeBaseParser:
     @staticmethod
     def _parse_fact(line: str, line_num: int) -> FuzzySet:
         if "=" not in line:
-            raise ValueError(f"Строка {line_num}: Отсутствует символ '=': {line}")
+            raise ValueError(f"Строка {line_num}: Отсутствует символ '=': '{line}'")
+
+        if line.count("=") != 1:
+            raise ValueError(f"Строка {line_num}: Строка факта должна содержать ровно один символ '=': '{line}'")
 
         left, right = line.split("=", 1)
-        pred_name, var_name = KnowledgeBaseParser._parse_predicate_header(
-            left.strip(), line_num
-        )
+        pred_name, var_name = KnowledgeBaseParser._parse_predicate_header(left, line_num)
 
-        right = right.strip()
         if not (right.startswith("{") and right.endswith("}")):
             raise ValueError(
-                f"Строка {line_num}: Множество должно быть заключено в '{{}}': {right}"
+                f"Строка {line_num}: Множество должно быть заключено в '{{}}': '{right}'"
             )
 
-        inner = right[1:-1].strip()
+        inner = right[1:-1]
         if not inner:
             raise ValueError(f"Строка {line_num}: Нечёткое множество не может быть пустым.")
 
-        elements: dict[str, float] = {}
-        pairs = re.findall(r"<([^<>]+)>", inner)
-        if not pairs:
+        # Строгая БНФ-проверка списка пар: <элемент,степень>,<элемент,степень>...
+        pair_re = r"<[a-zA-Z][a-zA-Z0-9]*,(?:0(?:\.\d+)?|1(?:\.0+)?)>"
+        set_re = rf"^{pair_re}(?:,{pair_re})*$"
+
+        if not re.match(set_re, inner):
             raise ValueError(
-                f"Строка {line_num}: Отсутствуют корректные пары <элемент,степень>."
+                f"Строка {line_num}: Некорректный синтаксис нечёткого множества: '{right}'. "
+                f"Ожидается формат: {{<элемент,степень>,...}} строго без пробелов и посторонних символов."
             )
 
+        elements: dict[str, float] = {}
+        pairs = re.findall(r"<([^<>]+)>", inner)
         for p in pairs:
-            parts = p.split(",")
-            if len(parts) != 2:
-                raise ValueError(
-                    f"Строка {line_num}: Пара '{p}' должна содержать ровно два значения через запятую."
-                )
+            elem, deg_str = p.split(",")
 
-            elem = parts[0].strip()
-            deg_str = parts[1].strip()
-
-            if not re.match(KnowledgeBaseParser.IDENT_RE, elem):
+            if elem in elements:
                 raise ValueError(
-                    f"Строка {line_num}: Некорректный идентификатор элемента '{elem}'."
-                )
-            if not re.match(KnowledgeBaseParser.DEGREE_RE, deg_str):
-                raise ValueError(
-                    f"Строка {line_num}: Степень принадлежности '{deg_str}' вне диапазона [0; 1]."
+                    f"Строка {line_num}: Дублирование элемента '{elem}' в нечётком множестве: '{right}'"
                 )
 
             elements[elem] = float(deg_str)
@@ -113,16 +119,13 @@ class KnowledgeBaseParser:
 
     @staticmethod
     def _parse_rule(line: str, line_num: int) -> FuzzyRule:
-        parts = line.split("~>")
-        if len(parts) != 2:
-            raise ValueError(f"Строка {line_num}: Ожидается один оператор '~>': {line}")
+        if line.count("~>") != 1:
+            raise ValueError(f"Строка {line_num}: Ожидается ровно один оператор '~>': '{line}'")
 
-        ant_pred, ant_var = KnowledgeBaseParser._parse_predicate_header(
-            parts[0].strip(), line_num
-        )
-        cons_pred, cons_var = KnowledgeBaseParser._parse_predicate_header(
-            parts[1].strip(), line_num
-        )
+        parts = line.split("~>")
+        ant_pred, ant_var = KnowledgeBaseParser._parse_predicate_header(parts[0], line_num)
+        cons_pred, cons_var = KnowledgeBaseParser._parse_predicate_header(parts[1], line_num)
+
         return FuzzyRule(ant_pred, ant_var, cons_pred, cons_var)
 
     @staticmethod
@@ -130,6 +133,6 @@ class KnowledgeBaseParser:
         m = re.match(r"^([a-zA-Z][a-zA-Z0-9]*)\(([a-zA-Z][a-zA-Z0-9]*)\)$", pred_str)
         if not m:
             raise ValueError(
-                f"Строка {line_num}: Некорректное имя предиката '{pred_str}'. Формат: Predicate(x)."
+                f"Строка {line_num}: Некорректное имя предиката '{pred_str}'. Формат: Predicate(x) без пробелов."
             )
         return m.group(1), m.group(2)

@@ -10,9 +10,11 @@
 
 def godel_implication(a: float, b: float) -> float:
     """Нечёткая импликация Гёделя."""
+
     return 1.0 if a <= b else b
 
 
 def t_norm_min(a: float, b: float) -> float:
     """Треугольная норма (нечёткая конъюнкция)."""
+    
     return min(a, b)

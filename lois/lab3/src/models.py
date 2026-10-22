@@ -11,7 +11,14 @@
 class FuzzySet:
     """Структура данных для хранения нечёткого предиката: Name(var) = {<elem, degree>, ...}."""
 
-    def __init__(self, pred_name: str, var_name: str, elements: dict[str, float], base_pred: str | None = None, is_derived: bool = False):
+    def __init__(
+        self,
+        pred_name: str,
+        var_name: str,
+        elements: dict[str, float],
+        base_pred: str | None = None,
+        is_derived: bool = False,
+    ):
         self.pred_name = pred_name
         self.var_name = var_name
         self.elements = elements
@@ -24,7 +31,8 @@ class FuzzySet:
         return f"{self.pred_name}({self.var_name})"
 
     def has_same_fuzzy_set(self, other: "FuzzySet", tol: float = 1e-4) -> bool:
-        """Сравнивает математическое содержание нечётких множеств (носитель и степени)."""
+        """Сравнивает содержание нечётких множеств (носитель и степени)."""
+
         if not isinstance(other, FuzzySet):
             return False
         if self.elements.keys() != other.elements.keys():
@@ -36,13 +44,10 @@ class FuzzySet:
 
     def __eq__(self, other: object) -> bool:
         """Полное равенство двух фактов: имя предиката и само нечёткое множество."""
-        
+
         if not isinstance(other, FuzzySet):
             return False
-        return (
-            self.pred_name == other.pred_name
-            and self.has_same_fuzzy_set(other)
-        )
+        return self.pred_name == other.pred_name and self.has_same_fuzzy_set(other)
 
     def __str__(self) -> str:
         pairs = []
@@ -54,9 +59,6 @@ class FuzzySet:
                 deg_str = f"{deg:.1f}"
             pairs.append(f"<{elem},{deg_str}>")
         return f"{self.pred_name}({self.var_name})={{{','.join(pairs)}}}"
-
-    def __repr__(self) -> str:
-        return str(self)
 
 
 class FuzzyRule:
